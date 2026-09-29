@@ -1,0 +1,15 @@
+{
+  "name": "vendas-marketing-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Workspace raiz do sistema de Pesquisa de Satisfação Petruz / Vendas & Marketing",
+  "scripts": {
+    "dev": "npm --prefix sap-boost-happy run dev",
+    "build": "npm --prefix sap-boost-happy run build",
+    "build:dev": "npm --prefix sap-boost-happy run build:dev",
+    "preview": "npm --prefix sap-boost-happy run preview",
+    "lint": "npm --prefix sap-boost-happy run lint",
+    "format": "npm --prefix sap-boost-happy run format",
+    "typecheck": "npm --prefix sap-boost-happy run typecheck"
+  }
+}
