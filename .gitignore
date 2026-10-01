@@ -3,11 +3,16 @@ node_modules/
 .pnp
 .pnp.js
 
-# Build outputs
+# Build outputs & caches
 dist/
 .nitro/
 .output/
 .tanstack/
+.lovable/
+scratch/
+.temp/
+supabase/.temp/
+.vinxi/
 
 # Environment and sensitive credential files
 .env
