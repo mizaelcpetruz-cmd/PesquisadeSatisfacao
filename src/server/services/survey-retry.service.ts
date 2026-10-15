@@ -61,10 +61,11 @@ export class SurveyRetryService {
         if (survey.phone && survey.phone !== "NÃO ENCONTRADO") {
           try {
             const template = survey.message_templates;
+            const tokenParam = ((survey as Record<string, unknown>).response_token as string | undefined) || survey.id;
             const vars = {
               nome_cliente: survey.contact_name || survey.card_name || "",
               id_pedido: survey.id,
-              nota_url: `https://pesquisa.petruz.com/api/public/nps/responder?pedido=${survey.id}&nota=`,
+              nota_url: `https://pesquisa.petruz.com/api/public/nps/responder?token=${encodeURIComponent(tokenParam)}&nota=`,
             };
 
             if (template?.zenvia_template_id) {

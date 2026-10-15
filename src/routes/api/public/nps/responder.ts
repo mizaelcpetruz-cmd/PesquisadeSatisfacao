@@ -6,11 +6,12 @@ export const Route = createFileRoute("/api/public/nps/responder")({
       GET: async ({ request }) => {
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const url = new URL(request.url);
+        const token = url.searchParams.get("token") || url.searchParams.get("t");
         const pedido = url.searchParams.get("pedido");
         const notaStr = url.searchParams.get("nota");
 
-        if (!pedido || !notaStr) {
-          return new Response(renderErrorPage("Parâmetros inválidos ou ausentes."), {
+        if (!notaStr) {
+          return new Response(renderErrorPage("Parâmetro de nota ausente."), {
             status: 400,
             headers: { "Content-Type": "text/html; charset=utf-8" },
           });
@@ -18,39 +19,51 @@ export const Route = createFileRoute("/api/public/nps/responder")({
 
         const nota = parseInt(notaStr, 10);
         if (isNaN(nota) || nota < 0 || nota > 10) {
-          return new Response(renderErrorPage("Nota inválida. Deve ser entre 0 e 10."), {
+          return new Response(renderErrorPage("Nota inválida. O valor deve ser de 0 a 10."), {
             status: 400,
             headers: { "Content-Type": "text/html; charset=utf-8" },
           });
         }
 
-        // 1. Look up survey by UUID or DocEntry
-        let query = supabaseAdmin.from("surveys").select("*");
-        if (
-          pedido.match(
-            /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/,
-          )
-        ) {
-          query = query.eq("id", pedido);
-        } else {
-          const docEntry = parseInt(pedido, 10);
-          if (isNaN(docEntry)) {
-            return new Response(renderErrorPage("Código de pedido inválido."), {
-              status: 400,
-              headers: { "Content-Type": "text/html; charset=utf-8" },
-            });
-          }
-          query = query.eq("sap_doc_entry", docEntry);
+        // 1. Validação estrita de autorização: exige token seguro ou UUID opaco
+        // Rejeita categoricamente números de documento sequenciais (DocEntry) para evitar spoofing
+        if (!token && !pedido) {
+          return new Response(renderErrorPage("Token de segurança da pesquisa ausente."), {
+            status: 400,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          });
         }
 
-        const { data: surveys, error: fetchErr } = await query
-          .order("created_at", { ascending: false })
-          .limit(1);
+        const isUuid = (val: string) =>
+          /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(val);
+
+        let query = supabaseAdmin.from("surveys").select("*");
+
+        if (token) {
+          // Busca prioritária pelo token aleatório criptográfico da pesquisa
+          query = query.eq("response_token", token);
+        } else if (pedido && isUuid(pedido)) {
+          // Compatibilidade retroativa apenas para UUIDs imprevisíveis
+          query = query.eq("id", pedido);
+        } else {
+          // Bloqueio explícito de IDs sequenciais / DocEntry
+          return new Response(
+            renderErrorPage(
+              "Por motivos de segurança, o acesso à pesquisa requer o link oficial com o token individual de validação.",
+            ),
+            {
+              status: 403,
+              headers: { "Content-Type": "text/html; charset=utf-8" },
+            },
+          );
+        }
+
+        const { data: surveys, error: fetchErr } = await query.limit(1);
         const survey = surveys?.[0];
 
         if (fetchErr || !survey) {
           return new Response(
-            renderErrorPage("Pesquisa correspondente não localizada no sistema."),
+            renderErrorPage("Pesquisa não localizada ou link expirado/inválido."),
             {
               status: 404,
               headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -58,7 +71,14 @@ export const Route = createFileRoute("/api/public/nps/responder")({
           );
         }
 
-        // 2. Record the score
+        // 2. Proteção contra Replay / Sobrescrita indevida
+        if (survey.status === "answered" || survey.answered_at != null) {
+          return new Response(renderAlreadyAnsweredPage(survey.score), {
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          });
+        }
+
+        // 3. Registrar a nota de resposta
         const { error: updateErr } = await supabaseAdmin
           .from("surveys")
           .update({
@@ -72,7 +92,7 @@ export const Route = createFileRoute("/api/public/nps/responder")({
           console.error("[NPS Responder] Erro ao gravar nota:", updateErr.message);
         }
 
-        // 3. Load settings for thank you message
+        // 4. Carregar mensagem de agradecimento personalizada
         const { data: settings } = await supabaseAdmin
           .from("app_settings")
           .select("thank_you_promoter, thank_you_detractor")
@@ -95,6 +115,7 @@ export const Route = createFileRoute("/api/public/nps/responder")({
 
         return new Response(
           renderSuccessPage({
+            token: (survey.response_token as string) || survey.id,
             pedido: survey.id,
             nota,
             message: thankYouMessage,
@@ -118,26 +139,43 @@ export const Route = createFileRoute("/api/public/nps/responder")({
           });
         }
 
-        const pedido = formData.get("pedido")?.trim() || "";
+        const token = formData.get("token")?.trim() || formData.get("pedido")?.trim() || "";
         const rawComentario = formData.get("comentario")?.trim() || "";
-        const comentario = rawComentario.slice(0, 2000);
+        const comentario = rawComentario.slice(0, 1000);
 
-        if (!pedido || (!pedido.match(/^[0-9a-fA-F-]{36}$/) && isNaN(Number(pedido)))) {
-          return new Response(renderErrorPage("Parâmetro de pedido inválido ou ausente."), {
+        if (!token) {
+          return new Response(renderErrorPage("Token de validação ausente."), {
             status: 400,
             headers: { "Content-Type": "text/html; charset=utf-8" },
           });
         }
 
-        // Update comment
-        let updateQuery = supabaseAdmin.from("surveys").update({ comment: comentario });
-        if (pedido.match(/^[0-9a-fA-F-]{36}$/)) {
-          updateQuery = updateQuery.eq("id", pedido);
+        const isUuid = (val: string) =>
+          /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(val);
+
+        // Localizar a pesquisa estritamente por token ou UUID
+        let findQuery = supabaseAdmin.from("surveys").select("id");
+        if (isUuid(token)) {
+          findQuery = findQuery.eq("id", token);
         } else {
-          updateQuery = updateQuery.eq("sap_doc_entry", parseInt(pedido, 10));
+          findQuery = findQuery.eq("response_token", token);
         }
 
-        const { error: updateErr } = await updateQuery;
+        const { data: surveys, error: fetchErr } = await findQuery.limit(1);
+        const survey = surveys?.[0];
+
+        if (fetchErr || !survey) {
+          return new Response(renderErrorPage("Pesquisa não localizada para inserção do comentário."), {
+            status: 404,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          });
+        }
+
+        // Atualizar comentário associado
+        const { error: updateErr } = await supabaseAdmin
+          .from("surveys")
+          .update({ comment: comentario })
+          .eq("id", survey.id);
 
         if (updateErr) {
           console.error("[NPS Responder] Erro ao gravar comentário:", updateErr.message);
@@ -151,7 +189,12 @@ export const Route = createFileRoute("/api/public/nps/responder")({
   },
 });
 
-function renderSuccessPage(opts: { pedido: string; nota: number; message: string }): string {
+function renderSuccessPage(opts: {
+  token: string;
+  pedido: string;
+  nota: number;
+  message: string;
+}): string {
   return `<!doctype html>
 <html lang="pt-BR">
   <head>
@@ -286,11 +329,98 @@ function renderSuccessPage(opts: { pedido: string; nota: number; message: string
       <p>${opts.message}</p>
       
       <form class="feedback-form" method="POST" action="/api/public/nps/responder">
+        <input type="hidden" name="token" value="${opts.token}" />
         <input type="hidden" name="pedido" value="${opts.pedido}" />
         <label for="comentario">Deseja adicionar algum comentário ou sugestão? (Opcional)</label>
-        <textarea id="comentario" name="comentario" placeholder="Escreva aqui seu comentário..."></textarea>
+        <textarea id="comentario" name="comentario" maxlength="1000" placeholder="Escreva aqui seu comentário..."></textarea>
         <button type="submit">Enviar Comentário</button>
       </form>
+    </div>
+  </body>
+</html>`;
+}
+
+function renderAlreadyAnsweredPage(score: number | null): string {
+  return `<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Pesquisa Já Respondida</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet" />
+    <style>
+      body {
+        font-family: 'Outfit', sans-serif;
+        background-color: #0c0516;
+        color: #f3f4f6;
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        margin: 0;
+        padding: 1.5rem;
+      }
+      .card {
+        background: rgba(26, 15, 42, 0.6);
+        border: 1px solid rgba(139, 92, 246, 0.2);
+        backdrop-filter: blur(16px);
+        max-width: 32rem;
+        width: 100%;
+        text-align: center;
+        padding: 3rem 2.5rem;
+        border-radius: 1rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      }
+      .circle {
+        width: 5rem;
+        height: 5rem;
+        border-radius: 50%;
+        background-color: rgba(139, 92, 246, 0.15);
+        border: 2px solid #8b5cf6;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1.5rem;
+      }
+      .circle svg {
+        width: 2.5rem;
+        height: 2.5rem;
+        color: #a78bfa;
+      }
+      .badge {
+        display: inline-block;
+        background: rgba(139, 92, 246, 0.2);
+        border: 1px solid rgba(139, 92, 246, 0.4);
+        color: #c4b5fd;
+        padding: 0.35rem 1rem;
+        border-radius: 9999px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+      }
+      h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        margin: 0 0 1rem;
+        color: #ffffff;
+      }
+      p {
+        color: #9ca3af;
+        font-size: 1.05rem;
+        line-height: 1.6;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="circle">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </div>
+      ${score != null ? `<div class="badge">Sua nota registrada: ${score}/10</div>` : ""}
+      <h1>Pesquisa Já Respondida</h1>
+      <p>Identificamos que a sua avaliação para esta compra já foi gravada com sucesso. Agradecemos imensamente pela sua participação!</p>
     </div>
   </body>
 </html>`;

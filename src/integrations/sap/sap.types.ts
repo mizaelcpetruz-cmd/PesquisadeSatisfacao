@@ -60,6 +60,12 @@ export interface SapSubgroup {
   subgroup: string;
 }
 
+export interface SapBpGroup {
+  groupCode: string;
+  groupName: string;
+  type?: string;
+}
+
 export interface SaleRow {
   docEntry: number;
   docNum: number;

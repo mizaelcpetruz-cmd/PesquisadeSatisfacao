@@ -1,10 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireSupabaseAuth, assertRoles } from "@/integrations/supabase/auth-middleware";
 import type { DashboardMetrics } from "./types";
 
 export const getDashboardMetrics = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<DashboardMetrics> => {
+    await assertRoles(context, ["admin", "operador"]);
     const { supabase } = context;
 
     const { data: settings } = await supabase

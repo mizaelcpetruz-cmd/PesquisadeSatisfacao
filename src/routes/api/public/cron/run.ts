@@ -10,10 +10,13 @@ import { getBrazilTimeString } from "@/core/utils/date.utils";
  * Public cron endpoint. Configure pg_cron (or external scheduler) to POST here.
  * Auth: requires `apikey` or `x-cron-key` header with timing-safe comparison.
  */
-function isAuthorizedKey(providedKey: string | null): boolean {
+function isAuthorizedKey(providedKey: string | null | undefined): boolean {
   if (!providedKey) return false;
-  const expectedKey = process.env.CRON_SECRET || process.env.SUPABASE_PUBLISHABLE_KEY;
-  if (!expectedKey) return false;
+  const expectedKey = process.env.CRON_SECRET;
+  if (!expectedKey) {
+    console.error("[CRON] CRON_SECRET não configurado no servidor. Rejeitando chamada por segurança.");
+    return false;
+  }
 
   try {
     const a = Buffer.from(providedKey);
@@ -29,7 +32,10 @@ export const Route = createFileRoute("/api/public/cron/run")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const key = request.headers.get("apikey") || request.headers.get("x-cron-key");
+        const key =
+          request.headers.get("x-cron-key") ||
+          request.headers.get("apikey") ||
+          request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
         if (!isAuthorizedKey(key)) {
           return new Response("Unauthorized", { status: 401 });
         }

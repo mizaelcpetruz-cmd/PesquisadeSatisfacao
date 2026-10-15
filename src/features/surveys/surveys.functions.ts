@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireSupabaseAuth, assertRoles } from "@/integrations/supabase/auth-middleware";
 import {
   sendWhatsAppText,
   sendWhatsAppTemplate,
@@ -48,6 +48,7 @@ export const sendSurveys = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => SendSchema.parse(input))
   .handler(async ({ data, context }) => {
+    await assertRoles(context, ["admin", "operador"]);
     const { userId } = context;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -223,7 +224,7 @@ export const sendSurveys = createServerFn({ method: "POST" })
       let { data: inserted, error: iErr } = await supabaseAdmin
         .from("surveys")
         .insert(surveyPayload as any)
-        .select("id")
+        .select("id, response_token")
         .single();
 
       if (iErr && iErr.code === "PGRST204") {
@@ -232,7 +233,7 @@ export const sendSurveys = createServerFn({ method: "POST" })
         const retryInsert = await supabaseAdmin
           .from("surveys")
           .insert(surveyPayload as any)
-          .select("id")
+          .select("id, response_token")
           .single();
         inserted = retryInsert.data;
         iErr = retryInsert.error;
@@ -257,6 +258,7 @@ export const sendSurveys = createServerFn({ method: "POST" })
         formattedDate,
         salespersonName: sale.salespersonName,
         surveyId: inserted.id,
+        token: (inserted as Record<string, unknown>).response_token as string | undefined || inserted.id,
         baseUrl,
       });
 
@@ -322,6 +324,7 @@ export const logCsvExport = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
+    await assertRoles(context, ["admin", "operador"]);
     const { userId } = context;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -354,6 +357,7 @@ export const resendSurvey = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => ResendSchema.parse(input))
   .handler(async ({ data, context }) => {
+    await assertRoles(context, ["admin", "operador"]);
     const { userId } = context;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -435,6 +439,7 @@ export const resendSurvey = createServerFn({ method: "POST" })
       formattedDate: survey.invoice_date,
       salespersonName: survey.salesperson_name,
       surveyId: survey.id,
+      token: (survey as Record<string, unknown>).response_token as string | undefined || survey.id,
       baseUrl,
     });
 
@@ -502,7 +507,8 @@ export const resendSurvey = createServerFn({ method: "POST" })
 export const syncClientContactFromSap = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => z.object({ cardCode: z.string().min(1) }).parse(input))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    await assertRoles(context, ["admin", "operador"]);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { getBusinessPartnerContact, pickPhone } = await import(
       "@/integrations/sap/sap-client.server"
@@ -540,7 +546,8 @@ export const syncAllFailedContactsFromSap = createServerFn({ method: "POST" })
       })
       .parse(input),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    await assertRoles(context, ["admin", "operador"]);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { fetchBusinessPartnersBatch, pickPhone } = await import(
       "@/integrations/sap/sap-client.server"

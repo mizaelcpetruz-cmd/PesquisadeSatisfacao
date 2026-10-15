@@ -1,8 +1,13 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getAppSettings, saveAppSettings, getSapSubgroupsList } from "../settings.functions";
+import {
+  getAppSettings,
+  saveAppSettings,
+  getSapGroupsAndSubgroupsCatalog,
+} from "../settings.functions";
 import { GeneralSettingsTab } from "./GeneralSettingsTab";
+import { SubgroupsTab } from "./SubgroupsTab";
 import { SystemLogsTab } from "./SystemLogsTab";
 import { ConnectionsTab } from "./ConnectionsTab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,7 +20,7 @@ export function SettingsView() {
   const qc = useQueryClient();
   const getSettingsFn = useServerFn(getAppSettings);
   const saveSettingsFn = useServerFn(saveAppSettings);
-  const getSubgroupsFn = useServerFn(getSapSubgroupsList);
+  const getCatalogFn = useServerFn(getSapGroupsAndSubgroupsCatalog);
 
   const [form, setForm] = useState<AppSettingsData>({
     thank_you_promoter: "",
@@ -35,10 +40,10 @@ export function SettingsView() {
     queryFn: () => getSettingsFn(),
   });
 
-  // 2. Query SAP Subgroups
-  const { data: subgroups = [] } = useQuery({
-    queryKey: ["sap-subgroups-catalog"],
-    queryFn: () => getSubgroupsFn(),
+  // 2. Query SAP Groups & Subgroups Catalog
+  const { data: catalog = { groups: [], subgroups: [] }, refetch: refetchCatalog } = useQuery({
+    queryKey: ["sap-groups-catalog"],
+    queryFn: () => getCatalogFn(),
   });
 
   useEffect(() => {
@@ -101,14 +106,25 @@ export function SettingsView() {
       </div>
 
       <Tabs defaultValue="general" className="space-y-4">
-        <TabsList className="grid grid-cols-3 w-full max-w-md">
+        <TabsList className="grid grid-cols-4 w-full max-w-xl">
           <TabsTrigger value="general">Geral</TabsTrigger>
+          <TabsTrigger value="subgroups">Grupos & Subgrupos</TabsTrigger>
           <TabsTrigger value="connections">Diagnóstico</TabsTrigger>
           <TabsTrigger value="logs">Logs do Sistema</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
-          <GeneralSettingsTab form={form} subgroups={subgroups} onChange={handleUpdateForm} />
+          <GeneralSettingsTab form={form} onChange={handleUpdateForm} />
+        </TabsContent>
+
+        <TabsContent value="subgroups">
+          <SubgroupsTab
+            form={form}
+            subgroups={catalog.subgroups}
+            groups={catalog.groups}
+            onChange={handleUpdateForm}
+            onRefreshCatalog={() => refetchCatalog()}
+          />
         </TabsContent>
 
         <TabsContent value="connections">

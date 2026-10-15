@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireSupabaseAuth, assertRoles } from "@/integrations/supabase/auth-middleware";
 import {
   listClosedInvoices,
   fetchBusinessPartnersBatch,
@@ -21,7 +21,8 @@ const RangeSchema = z.object({
 export const fetchClosedSales = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => RangeSchema.parse(input))
-  .handler(async ({ data }): Promise<SaleRow[]> => {
+  .handler(async ({ data, context }): Promise<SaleRow[]> => {
+    await assertRoles(context, ["admin", "operador"]);
     if (data.forceFresh) {
       clearBpContactCache();
     }
@@ -156,7 +157,8 @@ const SingleContactSchema = z.object({
 export const refreshSingleContact = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((input: unknown) => SingleContactSchema.parse(input))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    await assertRoles(context, ["admin", "operador"]);
     const bp = await getBusinessPartnerContact(data.cardCode, true);
     return {
       cardCode: data.cardCode,

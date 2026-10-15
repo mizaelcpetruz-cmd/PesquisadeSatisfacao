@@ -1,10 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth, assertAdmin } from "@/integrations/supabase/auth-middleware";
-import { testSapConnection, listSapSubgroups } from "@/integrations/sap/sap-client.server";
+import {
+  testSapConnection,
+  listSapSubgroups,
+  syncSapGroupsAndSubgroups,
+  fetchSapBpGroups,
+} from "@/integrations/sap/sap-client.server";
 import { testZenviaConnection } from "@/integrations/zenvia/zenvia.server";
 import { testSmtpConnection } from "@/integrations/email/email.server";
 import type { AppSettingsData, SystemLogEntry } from "./types";
+import type { SapSubgroup, SapBpGroup } from "@/integrations/sap/sap.types";
 
 export const getAppSettings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -160,3 +166,87 @@ export const getSapSubgroupsList = createServerFn({ method: "GET" })
     await assertAdmin(context);
     return await listSapSubgroups();
   });
+
+export const getSapGroupsAndSubgroupsCatalog = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<{ groups: SapBpGroup[]; subgroups: SapSubgroup[] }> => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Load custom subgroups if already saved in app_settings
+    const { data: settings } = await supabaseAdmin
+      .from("app_settings")
+      .select("custom_subgroups")
+      .eq("id", 1)
+      .maybeSingle();
+
+    const custom = settings?.custom_subgroups as SapSubgroup[] | null;
+    let subgroups: SapSubgroup[] = [];
+
+    const { STATIC_SUBGROUPS } = await import("@/integrations/sap/sap-subgroups.data");
+    const mergedMap = new Map<string, SapSubgroup>();
+
+    // 1. Seed with authentic @CSG_LINHA subgroups
+    for (const item of STATIC_SUBGROUPS) {
+      mergedMap.set(item.Code, item);
+    }
+
+    // 2. Add custom/dynamic subgroups from Supabase if present
+    if (custom && Array.isArray(custom)) {
+      for (const item of custom) {
+        if (item && item.Code) {
+          mergedMap.set(item.Code, item);
+        }
+      }
+    }
+
+    subgroups = Array.from(mergedMap.values());
+
+
+
+    // Build distinct groups list
+    const groupMap = new Map<string, string>();
+    for (const sg of subgroups) {
+      if (sg.groupCode) {
+        groupMap.set(sg.groupCode, sg.groupName || sg.Group || `Grupo ${sg.groupCode}`);
+      }
+    }
+
+    const groups: SapBpGroup[] = Array.from(groupMap.entries())
+      .map(([groupCode, groupName]) => ({ groupCode, groupName }))
+      .sort((a, b) => a.groupName.localeCompare(b.groupName));
+
+    return { groups, subgroups };
+  });
+
+export const syncSapSubgroupsFromSap = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // 1. Fetch fresh groups and subgroups from SAP Service Layer
+    const result = await syncSapGroupsAndSubgroups();
+
+    // 2. Persist updated custom_subgroups in app_settings table
+    const { error } = await supabaseAdmin
+      .from("app_settings")
+      .update({
+        custom_subgroups: result.subgroups,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", 1);
+
+    if (error) {
+      console.error("[Settings] Erro ao persistir custom_subgroups no Supabase:", error);
+    }
+
+    return {
+      ok: true,
+      groupsCount: result.groups.length,
+      subgroupsCount: result.subgroups.length,
+      groups: result.groups,
+      subgroups: result.subgroups,
+    };
+  });
+

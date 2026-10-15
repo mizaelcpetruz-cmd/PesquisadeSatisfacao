@@ -34,6 +34,9 @@ export function SurveysTable({
       <Table>
         <TableHeader className="bg-muted/50">
           <TableRow>
+            <TableHead className="w-[48px] text-center font-mono text-xs font-semibold text-muted-foreground">
+              #
+            </TableHead>
             <TableHead>Data / Hora</TableHead>
             <TableHead>NF</TableHead>
             <TableHead className="w-[70px] text-center">Filial</TableHead>
@@ -50,17 +53,20 @@ export function SurveysTable({
         <TableBody>
           {surveys.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={onResend ? 11 : 10} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={onResend ? 12 : 11} className="text-center py-8 text-muted-foreground">
                 Nenhum registro de pesquisa encontrado para os filtros selecionados.
               </TableCell>
             </TableRow>
           ) : (
-            surveys.map((s) => {
+            surveys.map((s, index) => {
               const isResending = resendingId === s.id;
               const isRefreshing = refreshingCardCode === s.card_code;
 
               return (
                 <TableRow key={s.id} className="hover:bg-muted/30 transition-colors">
+                  <TableCell className="w-[48px] text-center font-mono text-xs text-muted-foreground font-medium select-none">
+                    {index + 1}
+                  </TableCell>
                   <TableCell className="text-xs font-mono text-muted-foreground whitespace-nowrap">
                     {formatLocalizedDateTime(s.created_at)}
                   </TableCell>

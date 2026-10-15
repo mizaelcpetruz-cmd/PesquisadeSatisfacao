@@ -30,18 +30,21 @@ export const DEFAULT_EMAIL_BODY = `<div style="font-family: system-ui, -apple-sy
 
 export function renderEmailTemplate(
   template: string,
-  vars: { nome_cliente: string; id_pedido: string; baseUrl: string },
+  vars: { nome_cliente: string; id_pedido: string; baseUrl: string; token?: string },
 ): string {
   if (!template) return "";
 
+  const tokenParam = vars.token || vars.id_pedido;
+
   let rendered = template
     .replace(/\{\{\s*nome_cliente\s*\}\}/g, vars.nome_cliente || "")
-    .replace(/\{\{\s*id_pedido\s*\}\}/g, vars.id_pedido || "");
+    .replace(/\{\{\s*id_pedido\s*\}\}/g, vars.id_pedido || "")
+    .replace(/\{\{\s*token\s*\}\}/g, tokenParam || "");
 
   // Replace links for scores 0 to 10
   for (let i = 0; i <= 10; i++) {
     const regex = new RegExp(`\\{\\{\\s*link_nota_${i}\\s*\\}\\}`, "g");
-    const link = `${vars.baseUrl}/api/public/nps/responder?pedido=${encodeURIComponent(vars.id_pedido)}&nota=${i}`;
+    const link = `${vars.baseUrl}/api/public/nps/responder?token=${encodeURIComponent(tokenParam)}&nota=${i}`;
     rendered = rendered.replace(regex, link);
   }
 

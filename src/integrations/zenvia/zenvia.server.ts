@@ -87,6 +87,7 @@ export function buildTemplateVariables(data: {
   formattedDate?: string | null;
   salespersonName?: string | null;
   surveyId?: string | null;
+  token?: string | null;
   baseUrl?: string | null;
 }): Record<string, string> {
   const cardName = data.cardName || "Cliente";
@@ -105,8 +106,9 @@ export function buildTemplateVariables(data: {
 
   if (data.surveyId) {
     vars.id_pedido = data.surveyId;
+    const tokenParam = data.token || data.surveyId;
     if (data.baseUrl) {
-      vars.nota_url = `${data.baseUrl}/api/public/nps/responder?pedido=${data.surveyId}&nota=`;
+      vars.nota_url = `${data.baseUrl}/api/public/nps/responder?token=${encodeURIComponent(tokenParam)}&nota=`;
     }
   }
 

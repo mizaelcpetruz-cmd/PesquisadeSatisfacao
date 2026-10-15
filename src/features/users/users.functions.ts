@@ -35,7 +35,7 @@ export const listUsers = createServerFn({ method: "POST" })
         id: p.id as string,
         email: p.email as string | null,
         fullName: p.full_name as string | null,
-        status: "approved" as const,
+        status: ((p.status as "pending" | "approved" | "rejected") || "pending"),
         createdAt: p.created_at as string,
         role: rs.includes("admin") ? ("supervisor" as const) : ("operador" as const),
       };

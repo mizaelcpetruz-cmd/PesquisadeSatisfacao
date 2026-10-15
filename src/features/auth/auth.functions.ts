@@ -29,7 +29,7 @@ export const getMyAccess = createServerFn({ method: "POST" })
       email: profile?.email ?? null,
       fullName: profile?.full_name ?? null,
       phone: profile?.phone ?? null,
-      status: "approved" as const,
+      status: ((profile?.status as "pending" | "approved" | "rejected") || "pending"),
       role: isAdmin ? ("supervisor" as const) : ("operador" as const),
       requirePasswordChange: !!profile?.require_password_change,
       currentEnvironment: (appSettings?.current_environment as "test" | "production") || "test",

@@ -43,6 +43,7 @@ const ServerEnvSchema = z.object({
   // Zenvia WhatsApp API
   ZENVIA_API_TOKEN: z.string().optional().default(""),
   ZENVIA_FROM: z.string().optional().default(""),
+  ZENVIA_WEBHOOK_SECRET: z.string().optional(),
 });
 
 export type ServerEnv = z.infer<typeof ServerEnvSchema>;
@@ -72,5 +73,6 @@ export function getServerEnv(): ServerEnv {
     SAP_SL_PASSWORD: process.env.SAP_SL_PASSWORD || "",
     ZENVIA_API_TOKEN: process.env.ZENVIA_API_TOKEN || "",
     ZENVIA_FROM: process.env.ZENVIA_FROM || "",
+    ZENVIA_WEBHOOK_SECRET: process.env.ZENVIA_WEBHOOK_SECRET,
   }) as ServerEnv;
 }

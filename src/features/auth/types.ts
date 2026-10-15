@@ -3,7 +3,7 @@ export interface UserProfileAccess {
   email: string | null;
   fullName: string | null;
   phone: string | null;
-  status: "approved";
+  status: "pending" | "approved" | "rejected";
   role: "supervisor" | "operador";
   requirePasswordChange: boolean;
   currentEnvironment: "test" | "production";

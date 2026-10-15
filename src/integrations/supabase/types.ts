@@ -283,6 +283,7 @@ export type Database = {
           zenvia_message_id: string | null;
           retry_count: number;
           email: string | null;
+          response_token: string | null;
         };
         Insert: {
           answered_at?: string | null;
@@ -311,6 +312,7 @@ export type Database = {
           zenvia_message_id?: string | null;
           retry_count?: number;
           email?: string | null;
+          response_token?: string | null;
         };
         Update: {
           answered_at?: string | null;
@@ -339,6 +341,7 @@ export type Database = {
           zenvia_message_id?: string | null;
           retry_count?: number;
           email?: string | null;
+          response_token?: string | null;
         };
         Relationships: [
           {

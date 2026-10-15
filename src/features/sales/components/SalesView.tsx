@@ -16,7 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2, Send, RefreshCcw, Filter } from "lucide-react";
+import { Loader2, Send, RefreshCcw, Filter, ListOrdered } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import {
   getBrazilDateString,
   getISOWeekString,
@@ -329,14 +330,52 @@ export function SalesView() {
           </CardContent>
         </Card>
       ) : (
-        <SalesTable
-          sales={sales}
-          selected={selected}
-          onToggleSelect={toggleSelect}
-          onToggleSelectAll={toggleSelectAll}
-          onRefreshContact={handleRefreshContact}
-          refreshingCardCode={refreshingCardCode}
-        />
+        <div className="space-y-3">
+          {/* Índice / Resumo de Lançamentos */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-muted/40 px-4 py-2.5 rounded-lg border border-border/60">
+            <div className="flex items-center flex-wrap gap-2.5">
+              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <ListOrdered className="size-4 text-primary" />
+                <span>Índice de Lançamentos:</span>
+              </div>
+              <Badge variant="secondary" className="font-mono text-xs font-bold px-2.5 py-0.5">
+                {sales.length} {sales.length === 1 ? "lançamento encontrado" : "lançamentos encontrados"}
+              </Badge>
+              {selected.size > 0 ? (
+                <Badge variant="outline" className="text-xs text-primary bg-primary/10 border-primary/30 font-medium">
+                  {selected.size} {selected.size === 1 ? "selecionado para disparo" : "selecionados para disparo"}
+                </Badge>
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  (Nenhuma nota selecionada)
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs font-medium"
+                onClick={toggleSelectAll}
+                disabled={sales.length === 0}
+              >
+                {selected.size === sales.length && sales.length > 0
+                  ? "Desmarcar Todos"
+                  : `Selecionar Todos (${sales.length})`}
+              </Button>
+            </div>
+          </div>
+
+          <SalesTable
+            sales={sales}
+            selected={selected}
+            onToggleSelect={toggleSelect}
+            onToggleSelectAll={toggleSelectAll}
+            onRefreshContact={handleRefreshContact}
+            refreshingCardCode={refreshingCardCode}
+          />
+        </div>
       )}
     </div>
   );

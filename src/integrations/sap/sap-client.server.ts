@@ -8,6 +8,7 @@ import type {
   InvoiceListItem,
   ContactInfo,
   SapSubgroup,
+  SapBpGroup,
   InvoiceDocumentLine,
 } from "./sap.types";
 
@@ -250,6 +251,7 @@ export async function fetchReturnedInvoiceDocEntries(fromDate?: string): Promise
           DocumentLines?: Array<{ BaseType?: number; BaseEntry?: number }>;
         }>;
         "odata.nextLink"?: string;
+        "@odata.nextLink"?: string;
       };
 
       for (const cn of body.value ?? []) {
@@ -260,8 +262,9 @@ export async function fetchReturnedInvoiceDocEntries(fromDate?: string): Promise
         }
       }
 
-      url = body["odata.nextLink"] ? `/${body["odata.nextLink"]}` : null;
-      if (returnedSet.size > 2000) break;
+      const rawNext = body["@odata.nextLink"] || body["odata.nextLink"];
+      url = rawNext ? (rawNext.startsWith("http") || rawNext.startsWith("/") ? rawNext : `/${rawNext}`) : null;
+      if (returnedSet.size > 5000) break;
     }
   } catch (err) {
     console.error(
@@ -275,11 +278,12 @@ export async function fetchReturnedInvoiceDocEntries(fromDate?: string): Promise
 
 /**
  * List customer invoices / Notas Fiscais de Saída (OINV) in the given date range.
- * Fetches closed invoices, excluding cancelled ones, returned ones (RIN1), and non-sale operations.
+ * Fetches all sales invoices, excluding cancelled ones, returned ones (RIN1), and non-sale operations.
  */
 export async function listClosedInvoices(opts: {
   from: string; // YYYY-MM-DD
   to: string; // YYYY-MM-DD
+  onlyClosed?: boolean;
 }): Promise<InvoiceListItem[]> {
   const baseSelect = [
     "DocEntry",
@@ -308,7 +312,7 @@ export async function listClosedInvoices(opts: {
 
   const rawInvoices: InvoiceListItem[] = [];
   let url: string | null =
-    `/Invoices?$select=${baseSelect.join(",")}&$filter=${encodeURIComponent(filter)}&$orderby=DocDate desc`;
+    `/Invoices?$select=${baseSelect.join(",")}&$filter=${encodeURIComponent(filter)}&$orderby=DocDate desc&$top=200`;
 
   let useFallbackSelect = false;
 
@@ -335,7 +339,7 @@ export async function listClosedInvoices(opts: {
         "SalesPersonCode",
         "DocumentLines",
       ];
-      url = `/Invoices?$select=${simpleSelect.join(",")}&$filter=${encodeURIComponent(filter)}&$orderby=DocDate desc`;
+      url = `/Invoices?$select=${simpleSelect.join(",")}&$filter=${encodeURIComponent(filter)}&$orderby=DocDate desc&$top=200`;
       res = await slFetch(url);
     }
 
@@ -344,10 +348,16 @@ export async function listClosedInvoices(opts: {
       throw new Error(`SAP /Invoices falhou (${res.status}): ${text.slice(0, 300)}`);
     }
 
-    const body = (await res.json()) as { value: InvoiceListItem[]; "odata.nextLink"?: string };
+    const body = (await res.json()) as {
+      value: InvoiceListItem[];
+      "odata.nextLink"?: string;
+      "@odata.nextLink"?: string;
+    };
     rawInvoices.push(...(body.value ?? []));
-    url = body["odata.nextLink"] ? `/${body["odata.nextLink"]}` : null;
-    if (rawInvoices.length > 2000) break; // safety cap
+
+    const rawNext = body["@odata.nextLink"] || body["odata.nextLink"];
+    url = rawNext ? (rawNext.startsWith("http") || rawNext.startsWith("/") ? rawNext : `/${rawNext}`) : null;
+    if (rawInvoices.length > 5000) break; // safety cap
   }
 
   // Fetch Credit Notes (RIN1) and SalesPersons concurrently
@@ -358,9 +368,11 @@ export async function listClosedInvoices(opts: {
 
   const items = rawInvoices
     .filter((inv) => {
-      // 1. Status fechado (DocStatus = 'C')
-      const isClosed = inv.DocumentStatus === "bost_Close" || inv.DocumentStatus === "C";
-      if (!isClosed) return false;
+      // 1. Status: se opts.onlyClosed for explicitamente solicitado, filtra somente fechadas
+      if (opts.onlyClosed) {
+        const isClosed = inv.DocumentStatus === "bost_Close" || inv.DocumentStatus === "C";
+        if (!isClosed) return false;
+      }
 
       // 2. Não cancelado (CANCELED = 'N')
       // Exclui tanto a nota cancelada (CANCELED = 'Y' / csYes) quanto a nota de cancelamento/estorno (CANCELED = 'C' / csCancellation)
@@ -598,7 +610,199 @@ export function pickEmail(bp: ContactInfo | null): string | null {
   return null;
 }
 
+/**
+ * Fetches Business Partner Groups directly from SAP Service Layer (/BusinessPartnerGroups).
+ */
+export async function fetchSapBpGroups(): Promise<SapBpGroup[]> {
+  try {
+    const res = await slFetch("/BusinessPartnerGroups?$top=500&$orderby=Name asc");
+    if (!res.ok) {
+      console.warn(`[SAP Client] /BusinessPartnerGroups retornou status ${res.status}`);
+      return [];
+    }
+    const data = (await res.json()) as {
+      value?: Array<{ Code: number | string; Name: string; Type?: string }>;
+    };
+    return (data.value ?? []).map((g) => ({
+      groupCode: String(g.Code),
+      groupName: String(g.Name || "").trim(),
+      type: g.Type,
+    }));
+  } catch (err) {
+    console.error("[SAP Client] Erro ao buscar grupos de parceiros do SAP:", err);
+    return [];
+  }
+}
+
+/**
+ * Syncs Groups and Subgroups dynamically from SAP Service Layer using the official @CSG_LINHA table.
+ * Queries UDO /CSG_CADSUBG (header @CSG_DOCUMENTO, lines @CSG_LINHA) and /BusinessPartnerGroups.
+ */
+export async function syncSapGroupsAndSubgroups(): Promise<{
+  groups: SapBpGroup[];
+  subgroups: SapSubgroup[];
+}> {
+  const sapGroups = await fetchSapBpGroups();
+  const groupMap = new Map<string, string>();
+  for (const g of sapGroups) {
+    groupMap.set(g.groupCode, g.groupName);
+  }
+
+  const catalogMap = new Map<string, SapSubgroup>();
+
+  // 1. Primary Source: Fetch UDO /CSG_CADSUBG (Tabelas @CSG_DOCUMENTO e @CSG_LINHA)
+  try {
+    const csgRes = await slFetch("/CSG_CADSUBG?$top=500");
+    if (csgRes.ok) {
+      const csgData = (await csgRes.json()) as {
+        value?: Array<{
+          DocEntry: number;
+          U_Codgrup?: string | number | null;
+          U_Descgrup?: string | null;
+          CSG_LINHACollection?: Array<{
+            LineId: number;
+            U_Descsubg?: string | null;
+            U_Obs?: string | null;
+          }>;
+        }>;
+      };
+
+      for (const doc of csgData.value ?? []) {
+        const rawGCode = doc.U_Codgrup != null ? String(doc.U_Codgrup).trim() : "";
+        if (!rawGCode || rawGCode === "null") continue;
+
+        const gCode = rawGCode;
+        const gName =
+          String(doc.U_Descgrup || "").trim() ||
+          groupMap.get(gCode) ||
+          `Grupo ${gCode}`;
+
+        if (!groupMap.has(gCode)) {
+          groupMap.set(gCode, gName);
+        }
+
+        const lines = doc.CSG_LINHACollection ?? [];
+        for (const line of lines) {
+          const subName = line.U_Descsubg != null ? String(line.U_Descsubg).trim() : "";
+          if (!subName || subName === "null") continue;
+
+          const code = `${gCode}:${subName}`;
+          catalogMap.set(code, {
+            Code: code,
+            Name: subName,
+            Group: gName,
+            groupCode: gCode,
+            groupName: gName,
+            subgroup: subName,
+          });
+        }
+      }
+    } else {
+      console.warn(`[SAP Client] Falha ao consultar /CSG_CADSUBG (${csgRes.status})`);
+    }
+  } catch (err) {
+    console.error("[SAP Client] Erro ao consultar @CSG_LINHA (/CSG_CADSUBG):", err);
+  }
+
+  // 2. Secondary check: Business Partners in SAP with U_Subgrupo
+  try {
+    const bpRes = await slFetch(
+      "/BusinessPartners?$select=GroupCode,U_Subgrupo&$filter=U_Subgrupo ne null and U_Subgrupo ne ''&$top=2000",
+    );
+    if (bpRes.ok) {
+      const bpData = (await bpRes.json()) as {
+        value?: Array<{ GroupCode?: number | string; U_Subgrupo?: string }>;
+      };
+      for (const bp of bpData.value ?? []) {
+        const gCode = String(bp.GroupCode ?? "").trim();
+        const sub = String(bp.U_Subgrupo ?? "").trim();
+        if (gCode && sub && gCode !== "null" && sub !== "null") {
+          const code = `${gCode}:${sub}`;
+          if (!catalogMap.has(code)) {
+            const gName = groupMap.get(gCode) || `Grupo ${gCode}`;
+            catalogMap.set(code, {
+              Code: code,
+              Name: sub,
+              Group: gName,
+              groupCode: gCode,
+              groupName: gName,
+              subgroup: sub,
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[SAP Client] Não foi possível consultar subgrupos dinâmicos dos parceiros:", err);
+  }
+
+  // 3. Fallback: If CSG was empty (e.g. communication error), fallback to STATIC_SUBGROUPS
+  if (catalogMap.size === 0) {
+    const { STATIC_SUBGROUPS } = await import("./sap-subgroups.data");
+    for (const item of STATIC_SUBGROUPS) {
+      const gName = groupMap.get(item.groupCode) || item.groupName;
+      catalogMap.set(item.Code, {
+        ...item,
+        groupName: gName,
+        Group: gName,
+      });
+    }
+  }
+
+  // Ensure all SAP groups exist in groupMap
+  for (const g of sapGroups) {
+    if (!groupMap.has(g.groupCode)) {
+      groupMap.set(g.groupCode, g.groupName);
+    }
+    // If the group has no subgroup at all, add a (Sem Subgrupo) placeholder
+    const hasAny = Array.from(catalogMap.values()).some((s) => s.groupCode === g.groupCode);
+    if (!hasAny) {
+      const emptyCode = `${g.groupCode}:`;
+      catalogMap.set(emptyCode, {
+        Code: emptyCode,
+        Name: "(Sem Subgrupo)",
+        Group: g.groupName,
+        groupCode: g.groupCode,
+        groupName: g.groupName,
+        subgroup: "(Sem Subgrupo)",
+      });
+    }
+  }
+
+  const finalGroups: SapBpGroup[] = Array.from(groupMap.entries())
+    .map(([groupCode, groupName]) => ({ groupCode, groupName }))
+    .sort((a, b) => a.groupName.localeCompare(b.groupName));
+
+  const finalSubgroups = Array.from(catalogMap.values()).sort((a, b) => {
+    const gCmp = (a.groupName || "").localeCompare(b.groupName || "");
+    if (gCmp !== 0) return gCmp;
+    return (a.Name || "").localeCompare(b.Name || "");
+  });
+
+  return {
+    groups: finalGroups,
+    subgroups: finalSubgroups,
+  };
+}
+
 export async function listSapSubgroups(): Promise<SapSubgroup[]> {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: settings } = await supabaseAdmin
+      .from("app_settings")
+      .select("custom_subgroups")
+      .eq("id", 1)
+      .maybeSingle();
+
+    const custom = settings?.custom_subgroups as SapSubgroup[] | null;
+    if (custom && Array.isArray(custom) && custom.length > 0) {
+      return custom;
+    }
+  } catch (err) {
+    console.warn("[SAP Client] Não foi possível ler custom_subgroups do Supabase:", err);
+  }
+
   const { STATIC_SUBGROUPS } = await import("./sap-subgroups.data");
   return STATIC_SUBGROUPS;
 }
+

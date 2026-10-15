@@ -60,13 +60,13 @@ if (process.env.NODE_ENV === "development") {
     try {
       const port = process.env.PORT || 8080;
       const url = `http://localhost:${port}/api/public/cron/run`;
-      const key = process.env.SUPABASE_PUBLISHABLE_KEY;
+      const key = process.env.CRON_SECRET || "dev-cron-secret-petruz";
       if (!key) return; // not initialized yet
 
       const res = await fetch(url, {
         method: "POST",
         headers: {
-          apikey: key,
+          "x-cron-key": key,
           "Content-Type": "application/json",
         },
       });

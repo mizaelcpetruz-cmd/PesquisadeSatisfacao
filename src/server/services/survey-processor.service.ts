@@ -259,7 +259,7 @@ export class SurveyProcessorService {
           let { data: row, error: rErr } = await supabaseAdmin
             .from("surveys")
             .insert(surveyPayload as any)
-            .select("id")
+            .select("id, response_token")
             .single();
 
           if (rErr && rErr.code === "PGRST204") {
@@ -268,7 +268,7 @@ export class SurveyProcessorService {
             const retryInsert = await supabaseAdmin
               .from("surveys")
               .insert(surveyPayload as any)
-              .select("id")
+              .select("id, response_token")
               .single();
             row = retryInsert.data;
             rErr = retryInsert.error;
@@ -287,6 +287,7 @@ export class SurveyProcessorService {
             formattedDate: formatLocalizedDate(inv.DocDate),
             salespersonName: inv.SalesPerson?.SalesEmployeeName,
             surveyId: row.id,
+            token: (row as Record<string, unknown>).response_token as string | undefined || row.id,
             baseUrl,
           });
 

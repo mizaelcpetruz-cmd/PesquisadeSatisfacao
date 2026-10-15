@@ -16,7 +16,10 @@ import {
 function isAuthorizedWebhook(request: Request): boolean {
   const configuredSecret = process.env.ZENVIA_WEBHOOK_SECRET;
   if (!configuredSecret) {
-    return true; // Secret not yet configured in environment
+    console.error(
+      "[ZENVIA WEBHOOK] ZENVIA_WEBHOOK_SECRET não configurado no servidor. Rejeitando requisição por segurança.",
+    );
+    return false; // Fail closed
   }
 
   const url = new URL(request.url);
@@ -99,6 +102,7 @@ export const Route = createFileRoute("/api/public/zenvia/webhook")({
                   const html = renderEmailTemplate(emailBodyRaw, {
                     nome_cliente: survey.contact_name || survey.card_name || "",
                     id_pedido: survey.id,
+                    token: (survey as Record<string, unknown>).response_token as string | undefined || survey.id,
                     baseUrl,
                   });
 

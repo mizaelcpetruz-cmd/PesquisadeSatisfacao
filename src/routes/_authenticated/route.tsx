@@ -132,7 +132,7 @@ function AuthedLayout() {
         email: profile?.email ?? user.email ?? null,
         fullName: profile?.full_name ?? (user.user_metadata?.full_name as string) ?? null,
         phone: profile?.phone ?? null,
-        status: "approved" as const,
+        status: ((profile?.status as "pending" | "approved" | "rejected") || "pending"),
         role: isAdmin ? ("supervisor" as const) : ("operador" as const),
         requirePasswordChange: !!profile?.require_password_change,
         currentEnvironment: "production" as const,
@@ -495,7 +495,17 @@ function AuthedLayout() {
 
         {/* Page Content: Adaptive fluid container for all monitor sizes */}
         <main className="flex-1 w-full max-w-[1700px] mx-auto p-3.5 sm:p-5 md:p-8 min-w-0">
-          <Outlet />
+          {me?.status === "pending" ? (
+            <div className="flex flex-col items-center justify-center p-12 text-center bg-card rounded-2xl border border-border shadow-sm max-w-lg mx-auto mt-12">
+              <Shield className="size-12 text-amber-500 mb-4 animate-pulse" />
+              <h2 className="text-xl font-bold">Cadastro Pendente de Aprovação</h2>
+              <p className="text-sm text-muted-foreground mt-2">
+                Sua conta corporativa foi criada com sucesso, mas ainda necessita da aprovação de um supervisor para acessar os dados e funcionalidades do sistema.
+              </p>
+            </div>
+          ) : (
+            <Outlet />
+          )}
         </main>
       </div>
 

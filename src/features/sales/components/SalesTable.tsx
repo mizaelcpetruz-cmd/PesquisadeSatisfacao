@@ -5,6 +5,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TableFooter,
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -33,10 +34,13 @@ export function SalesTable({
   const allSelected = sales.length > 0 && selected.size === sales.length;
 
   return (
-    <div className="rounded-md border border-border overflow-hidden">
+    <div className="rounded-md border border-border overflow-hidden bg-card">
       <Table>
         <TableHeader className="bg-muted/50">
           <TableRow>
+            <TableHead className="w-[48px] text-center font-mono text-xs font-semibold text-muted-foreground">
+              #
+            </TableHead>
             <TableHead className="w-[48px] text-center">
               <Checkbox
                 checked={allSelected}
@@ -57,12 +61,12 @@ export function SalesTable({
         <TableBody>
           {sales.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                 Nenhuma Nota Fiscal de Saída encontrada para o período selecionado no SAP B1.
               </TableCell>
             </TableRow>
           ) : (
-            sales.map((s) => {
+            sales.map((s, index) => {
               const isChecked = selected.has(s.docEntry);
               const isRefreshing = refreshingCardCode === s.cardCode;
               const isOptOut = s.recebePesquisa === "0" || s.recebePesquisa === 0;
@@ -76,6 +80,9 @@ export function SalesTable({
                   }`}
                   onClick={() => onToggleSelect(s.docEntry)}
                 >
+                  <TableCell className="w-[48px] text-center font-mono text-xs text-muted-foreground font-medium select-none">
+                    {index + 1}
+                  </TableCell>
                   <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
                       checked={isChecked}
@@ -192,6 +199,29 @@ export function SalesTable({
             })
           )}
         </TableBody>
+        {sales.length > 0 && (
+          <TableFooter className="bg-muted/40 border-t">
+            <TableRow>
+              <TableCell colSpan={2} className="text-center font-mono text-xs font-semibold text-muted-foreground">
+                Total
+              </TableCell>
+              <TableCell colSpan={7} className="text-xs text-muted-foreground font-medium">
+                <span className="font-semibold text-foreground">{sales.length}</span>{" "}
+                {sales.length === 1 ? "lançamento encontrado" : "lançamentos encontrados"}
+                {selected.size > 0 && (
+                  <span className="ml-2 font-semibold text-primary">
+                    ({selected.size} {selected.size === 1 ? "selecionado" : "selecionados"})
+                  </span>
+                )}
+              </TableCell>
+              <TableCell className="text-right font-bold text-sm">
+                {sales
+                  .reduce((acc, s) => acc + (s.docTotal || 0), 0)
+                  .toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </TableCell>
+            </TableRow>
+          </TableFooter>
+        )}
       </Table>
     </div>
   );
