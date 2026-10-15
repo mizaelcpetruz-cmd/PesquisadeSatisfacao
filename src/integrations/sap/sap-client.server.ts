@@ -107,12 +107,26 @@ async function getOrRenewSession(forceRefresh = false): Promise<string> {
   return cookieHeader;
 }
 
-/**
- * Executes an authenticated request to SAP Service Layer with automatic 401 retry.
- */
 export async function slFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const config = getValidatedConfig();
-  const url = path.startsWith("http") ? path : `${config.baseUrl}${path}`;
+  let url: string;
+  if (path.startsWith("http")) {
+    url = path;
+  } else {
+    const cleanBase = config.baseUrl.replace(/\/+$/, "");
+    if (path.startsWith("/")) {
+      const baseMatch = cleanBase.match(/^(https?:\/\/[^/]+)(\/.*)?$/);
+      const origin = baseMatch ? baseMatch[1] : cleanBase;
+      const basePath = baseMatch && baseMatch[2] ? baseMatch[2] : "";
+      if (basePath && path.startsWith(basePath)) {
+        url = `${origin}${path}`;
+      } else {
+        url = `${cleanBase}${path}`;
+      }
+    } else {
+      url = `${cleanBase}/${path}`;
+    }
+  }
 
   let cookie = await getOrRenewSession();
   const headers = new Headers(options.headers);
@@ -240,7 +254,7 @@ export async function fetchReturnedInvoiceDocEntries(fromDate?: string): Promise
       ? `Cancelled ne 'tYES' and Cancelled ne 'Y' and DocDate ge '${fromDate}'`
       : `Cancelled ne 'tYES' and Cancelled ne 'Y'`;
 
-    let url: string | null = `/CreditNotes?$select=DocEntry,DocDate,Cancelled,DocumentLines&$filter=${encodeURIComponent(filter)}&$orderby=DocDate desc&$top=500`;
+    let url: string | null = `/CreditNotes?$select=DocEntry,DocDate,Cancelled,DocumentLines&$filter=${encodeURIComponent(filter)}&$orderby=DocDate desc`;
 
     while (url) {
       const res = await slFetch(url);
@@ -312,7 +326,7 @@ export async function listClosedInvoices(opts: {
 
   const rawInvoices: InvoiceListItem[] = [];
   let url: string | null =
-    `/Invoices?$select=${baseSelect.join(",")}&$filter=${encodeURIComponent(filter)}&$orderby=DocDate desc&$top=200`;
+    `/Invoices?$select=${baseSelect.join(",")}&$filter=${encodeURIComponent(filter)}&$orderby=DocDate desc`;
 
   let useFallbackSelect = false;
 
@@ -339,7 +353,7 @@ export async function listClosedInvoices(opts: {
         "SalesPersonCode",
         "DocumentLines",
       ];
-      url = `/Invoices?$select=${simpleSelect.join(",")}&$filter=${encodeURIComponent(filter)}&$orderby=DocDate desc&$top=200`;
+      url = `/Invoices?$select=${simpleSelect.join(",")}&$filter=${encodeURIComponent(filter)}&$orderby=DocDate desc`;
       res = await slFetch(url);
     }
 
