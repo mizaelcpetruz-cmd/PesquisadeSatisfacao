@@ -14,8 +14,6 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
     "tunnel": "ngrok http 8080"
   },
   "dependencies": {
@@ -95,7 +93,6 @@
     "prettier": "^3.7.3",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
-    "vite": "^8.0.16",
-    "vitest": "^5.0.5"
+    "vite": "^8.0.16"
   }
 }
