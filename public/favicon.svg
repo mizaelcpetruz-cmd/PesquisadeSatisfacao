@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <defs>
+    <linearGradient id="satGrad" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#a855f7" />
+      <stop offset="50%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#c084fc" stop-opacity="0.6" />
+      <stop offset="100%" stop-color="#818cf8" stop-opacity="0.1" />
+    </linearGradient>
+    <filter id="satShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#7c3aed" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Background rounded bubble -->
+  <rect x="4" y="4" width="40" height="40" rx="12" fill="url(#satGrad)" filter="url(#satShadow)" />
+  <rect x="4.5" y="4.5" width="39" height="39" rx="11.5" stroke="url(#glowGrad)" stroke-width="1" />
+
+  <!-- Happy eyes -->
+  <circle cx="17" cy="19" r="2.5" fill="#ffffff" />
+  <circle cx="31" cy="19" r="2.5" fill="#ffffff" />
+
+  <!-- Joyful Smile Curve -->
+  <path d="M16 26.5C18.5 32 29.5 32 32 26.5" stroke="#ffffff" stroke-width="3" stroke-linecap="round" />
+
+  <!-- Satisfaction rating sparkle / star at top-right corner -->
+  <path d="M37 6.5L38.2 9.8L41.5 11L38.2 12.2L37 15.5L35.8 12.2L32.5 11L35.8 9.8Z" fill="#fbbf24" stroke="#f59e0b" stroke-width="0.5" />
+</svg>
