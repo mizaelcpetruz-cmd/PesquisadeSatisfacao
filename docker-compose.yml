@@ -4,9 +4,9 @@ services:
     container_name: petruz-satisfacao
     restart: always
     ports:
-      - "8080:8080"
+      - "4046:4046"
     env_file:
       - .env
     environment:
       - NODE_ENV=production
-      - PORT=8080
+      - PORT=4046
